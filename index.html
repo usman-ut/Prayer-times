@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0f0f0f">
+  <title>Prayer Times - Azharul Madaaris</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f0f0f; color: #fff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+    .header { width: 100%; max-width: 500px; display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding: 16px; background: #1a1a1a; border-radius: 16px; }
+    .header .icon { font-size: 28px; }
+    .header .title { font-size: 16px; font-weight: 700; }
+    .header .subtitle { font-size: 12px; color: #888; margin-top: 2px; }
+    .table { width: 100%; max-width: 500px; background: #1a1a1a; border-radius: 16px; overflow: hidden; }
+    .col-headers { display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 10px 16px; border-bottom: 1px solid #2a2a2a; }
+    .col-headers span { font-size: 11px; color: #555; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .col-headers span:nth-child(2), .col-headers span:nth-child(3) { text-align: center; }
+    .prayer-row { display: grid; grid-template-columns: 1fr 1fr 1fr; padding: 14px 16px; border-bottom: 1px solid #2a2a2a; }
+    .prayer-row:last-child { border-bottom: none; }
+    .prayer-row.active { background: #1a3a1a; }
+    .prayer-row .name { font-size: 15px; font-weight: 700; }
+    .prayer-row .time { font-size: 15px; text-align: center; }
+    .prayer-row .jamat { font-size: 15px; font-weight: 700; text-align: center; }
+    .prayer-row.active .name, .prayer-row.active .time, .prayer-row.active .jamat { color: #00dd00; }
+    .next-box { width: 100%; max-width: 500px; background: #1a1a1a; border-radius: 16px; padding: 16px; margin-top: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .next-box .label { font-size: 11px; color: #888; margin-bottom: 4px; }
+    .next-box .val { font-size: 15px; font-weight: 700; }
+    .next-box .tval { font-size: 14px; color: #aaa; }
+    .updated { font-size: 11px; color: #444; margin-top: 16px; }
+    .error { color: #ff4444; text-align: center; padding: 20px; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <div class="icon">🌙</div>
+  <div>
+    <div class="title">Azharul Madaaris · Bradford</div>
+    <div class="subtitle" id="subtitle">Loading...</div>
+  </div>
+</div>
+<div class="table">
+  <div class="col-headers"><span>Prayer</span><span>Azan</span><span>Jamaat</span></div>
+  <div id="rows"><div style="padding:20px;text-align:center;color:#888">Loading...</div></div>
+</div>
+<div class="next-box" id="next-box" style="display:none">
+  <div><div class="label">Next Prayer</div><div class="val" id="next-name"></div></div>
+  <div style="text-align:center"><div class="label">Azan</div><div class="tval" id="next-azan"></div></div>
+  <div style="text-align:right"><div class="label">Jamaat</div><div class="tval" id="next-jamat"></div></div>
+</div>
+<div class="updated" id="updated"></div>
+
+<script>
+function toMins(t) { if (!t) return 0; const p = t.split(":"); return parseInt(p[0])*60+parseInt(p[1]); }
+const DAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+async function load() {
+  const today = new Date();
+  const nowMins = today.getHours()*60+today.getMinutes();
+  document.getElementById("subtitle").textContent = DAYS[today.getDay()]+", "+today.getDate()+" "+MONTHS[today.getMonth()]+" "+today.getFullYear();
+  try {
+    const res = await fetch("/api/getTimes");
+    if (!res.ok) throw new Error("Failed");
+    const data = await res.json();
+    const day = data.days[today.getDate()];
+    const dow = today.getDay();
+    const isFri = dow===5, isWknd = dow===0||dow===6;
+    const prayers = [
+      {name:"Fajr", azan:day.fajr, jamat:isWknd?data.fajrJ_weekend:data.fajrJ_weekday},
+      {name:isFri?"Jumu'ah":"Zohr", azan:day.zohr, jamat:isFri?data.zohrJ_friday:data.zohrJ_weekday},
+      {name:"Asr", azan:day.asr, jamat:isWknd?data.asrJ_weekend:data.asrJ_weekday},
+      {name:"Maghrib", azan:day.mag, jamat:day.magJ},
+      {name:"Isha", azan:day.isha, jamat:day.ishaJ}
+    ];
+    let current=prayers[0], next=prayers[1];
+    for (let i=0;i<prayers.length;i++) {
+      if (toMins(prayers[i].azan)<=nowMins) { current=prayers[i]; next=prayers[i+1]||prayers[0]; }
+    }
+    const rowsEl = document.getElementById("rows");
+    rowsEl.innerHTML = "";
+    for (let p of prayers) {
+      const isActive = p.name===current.name;
+      const row = document.createElement("div");
+      row.className = "prayer-row"+(isActive?" active":"");
+      row.innerHTML = `<div class="name">${p.name}</div><div class="time">${p.azan}</div><div class="jamat">${p.jamat}</div>`;
+      rowsEl.appendChild(row);
+    }
+    document.getElementById("next-name").textContent = next.name;
+    document.getElementById("next-azan").textContent = next.azan;
+    document.getElementById("next-jamat").textContent = next.jamat;
+    document.getElementById("next-box").style.display = "flex";
+    document.getElementById("updated").textContent = "Updated "+today.getHours()+":"+String(today.getMinutes()).padStart(2,"0");
+  } catch(e) {
+    document.getElementById("rows").innerHTML = '<div class="error">Could not load prayer times.</div>';
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
